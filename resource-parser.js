@@ -1212,7 +1212,7 @@ function Type_Check(subs) {
     var RuleK = ["host,", "-suffix,", "domain,", "domain-regex,", "-keyword,", "ip-cidr,", "ip-cidr6,",  "geoip,", "user-agent,", "ip6-cidr,", "ip-asn", "and,", "or,", "not,"];
     var DomainK = ["domain-set,"]
     var QuanXK = ["shadowsocks=", "trojan=", "vmess=", "http=", "socks5=", "vless=","anytls=","hysteria2="];
-    var SurgeK = ["=ss,", "=vmess,", "=trojan,", "=http,", "=custom,", "=https,", "=shadowsocks", "=shadowsocksr", "=sock5", "=sock5-tls","=anytls"];
+    var SurgeK = ["=ss,", "=vmess,", "=trojan,", "=http,", "=custom,", "=https,", "=shadowsocks", "=shadowsocksr", "=sock5", "=sock5-tls","=anytls","=hysteria2", "=hy2"];
     var ClashK = ["proxies:","\"proxies\":"]
     var SubK = ["dm1lc3M", "c3NyOi8v", "CnNzOi8", "dHJvamFu", "c3M6Ly", "c3NkOi8v", "c2hhZG93", "aHR0cDovLw", "aHR0cHM6L", "CnRyb2phbjo", "aHR0cD0", "aHR0cCA","U1RBVFVT","dmxlc3M6"];
     var RewriteK = [" url 302", " url 307", " url reject", " url script", " url req", " url res", " url echo", " url-and-header 302", " url-and-header 307", " url-and-header reject", " url-and-header script", " url-and-header req", " url-and-header res", " url-and-header echo", " url jsonjq"] // quantumult X 类型 rewrite
@@ -2803,7 +2803,7 @@ function Subs2QX(subs, Pudp, Ptfo, Pcert0, PTls13) {
   if (Pdbg) {$notify("subs", "node", subs)}
     var list0 = subs.split("\n");
     var QuanXK = ["shadowsocks=", "trojan=", "vmess=", "http=","socks5=", "vless=", "anytls=", "hysteria2="];
-    var SurgeK = ["=ss,", "=vmess,", "=trojan,", "=http,", "=https,", "=custom,", "=socks5", "=socks5-tls","=anytls"];
+    var SurgeK = ["=ss,", "=vmess,", "=trojan,", "=http,", "=https,", "=custom,", "=socks5", "=socks5-tls","=anytls","=hysteria2", "=hy2"];
     var LoonK = ["=Shadowsocks", "=ShadowsocksR", "=Trojan", "=VLESS","=AnyTLS"]
     var QXlist = [];
     var failedList = [];
@@ -4247,8 +4247,10 @@ function Surge2QX(conf) {
       node = SS52QX(cnt) //surge 3的Socks5
     } else if (cnt.split("=")[1].split(",")[0].indexOf("custom") != -1) {
       node = SCT2QX(cnt) //surge2写法
-    } else if (cnt.split("=")[1].split(",")[0].indexOf("anytls") != -1 && version>913) {
+    } else if (cnt.split("=")[1].split(",")[0].trim().toLowerCase().indexOf("anytls") != -1 && version>913) {
       node = SATS2QX(cnt) // surge anytls from version 913 afterward
+    } else if (/^hysteria2?$/i.test(cnt.split("=")[1].split(",")[0].trim())) {
+      node = SHY22QX(cnt) // surge Hysteria2, 原生 QX 格式
     }
     node = Pudp0 != 0 ? XUDP(node,Pudp0) : node
     node = Ptfo0 != 0 ? XTFO(node,Ptfo0) : node
@@ -4339,8 +4341,8 @@ function SVmess2QX(content) {
 // 用于过滤非节点部分（比如整份配置中其它内容）
 function isSurge(content) {
   if (content.indexOf("=") != -1) {
-    cnt = content.split("=")[1].split(",")[0].trim()
-    if (cnt == "http" || cnt == "ss" || cnt == "trojan" || cnt == "vmess" || cnt == "custom" || cnt == "https" || cnt == "socks5"|| cnt == "socks5-tls"|| cnt == "anytls") {
+    cnt = content.split("=")[1].split(",")[0].trim().toLowerCase()
+    if (cnt == "http" || cnt == "ss" || cnt == "trojan" || cnt == "vmess" || cnt == "custom" || cnt == "https" || cnt == "socks5"|| cnt == "socks5-tls"|| cnt == "anytls" || cnt == "hysteria2" || cnt == "hy2") {
         return content
     }
   }
@@ -4388,6 +4390,71 @@ function SATS2QX(content) {
   } catch (error) {
     console.log("surge-anytls:"+error)
   }
+}
+
+
+// surge 中 hysteria2/Hysteria2 类型 -> QX 1.9.0(965)+ 原生节点行
+// 🇮🇳 印度 = Hysteria2, server, port, password, sni=xxx, skip-cert-verify=true, ports=10000-20000, obfs=salamander, obfs-password=xxx, tls-cert-sha256=xxx, udp=true
+function SHY22QX(content) {
+  try {
+    var cnt = content;
+    var head = cnt.split("=")[0].trim();                    // 节点名
+    var tail = cnt.slice(cnt.indexOf("=") + 1);             // = 之后的参数区
+    var fields = splitSurgeFields(tail);                    // 兼容引号内含逗号的字段
+    var type = String(fields[0] || "").trim();
+    var ipport = String(fields[1] || "").trim() + ":" + String(fields[2] || "").trim();
+    var pwd = stripQuotes(String(fields[3] || "").trim());
+    var params = {};
+    for (var i = 4; i < fields.length; i++) {
+      var kv = fields[i].trim();
+      var eq = kv.indexOf("=");
+      if (eq > 0) { params[kv.slice(0, eq).trim().toLowerCase()] = stripQuotes(kv.slice(eq + 1).trim()) }
+    }
+    var f = ["hysteria2=" + ipport];
+    if (pwd) { f.push("password=" + pwd) }
+    var sni = params.sni || params.peer || params.servername;
+    if (sni) { f.push("tls-host=" + sni) }
+    var skip = params["skip-cert-verify"];
+    if (skip == "true" || skip == "1") { f.push("tls-verification=false") }
+    else if (Pcert0) { var cv = TLSCertParam(Pcert0, "true"); if (cv) { f.push(cv) } }
+    var csha = params["tls-cert-sha256"] || params.fingerprint;
+    if (csha) { f.push("tls-cert-sha256=" + csha) }
+    var hopping = params["port-hopping"] || params.ports || params.mport;
+    if (hopping) { f.push("port-hopping=" + String(hopping).replace(/\s/g, "")) }
+    var obfspwd = params["obfs-password"] || params.obfspassword;
+    if (obfspwd) { f.push("salamander-password=" + obfspwd) }
+    else if (params.obfs && /salamander/i.test(params.obfs) && params["obfs-password"] == undefined) { /* 无密码时不输出 */ }
+    if (params.alpn) { f.push("alpn=" + params.alpn) }
+    var udpOn = params.udp != undefined ? !(params.udp == "false" || params.udp == "0") : !(String(Pudp0) == "-1");
+    f.push("udp-relay=" + (udpOn ? "true" : "false"));
+    f.push("tag=" + head);
+    return f.join(", ");
+  } catch (error) {
+    console.log("surge-hysteria2:" + error);
+    return "";
+  }
+}
+// 按逗号切分 Surge 字段，但保留双引号内的逗号（如 server-dns="223.5.5.5,quic://..."）
+function splitSurgeFields(str) {
+  var out = [], cur = "", inQ = false, qc = "";
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charAt(i);
+    if ((c == '"' || c == "'")) {
+      if (!inQ) { inQ = true; qc = c } else if (qc == c) { inQ = false }
+      cur += c;
+    } else if (c == "," && !inQ) {
+      out.push(cur); cur = "";
+    } else { cur += c }
+  }
+  out.push(cur);
+  return out;
+}
+function stripQuotes(s) {
+  s = String(s == null ? "" : s).trim();
+  if (s.length >= 2 && ((s.charAt(0) == '"' && s.charAt(s.length - 1) == '"') || (s.charAt(0) == "'" && s.charAt(s.length - 1) == "'"))) {
+    return s.slice(1, -1);
+  }
+  return s;
 }
 
 
