@@ -172,7 +172,7 @@ $parser.hashSchema = function () {
           { type: "switch", key: "UA", label: "User-Agent 替换",
             onValue: "1", offValue: "" ,
             description: "开启该选项后，将会尝试使用 Shadowrocket 的 User-Agent 重新获取订阅内容（含被订阅源隐藏的 Hysteria2 节点）"},
-          { type: "switch", key: "hy2", label: "拿到 Hysteria2 节点（等价开 UA）",
+          { type: "switch", key: "hy2", label: "获取 Hysteria2 节点（等价开 UA）",
             onValue: "1", offValue: "" ,
             description: "开启后自动用 Shadowrocket 的 User-Agent 重新获取订阅，以便拿到被订阅源对 QX 隐藏的 Hysteria2/hy2 节点。效果等同于打开「User-Agent 替换」"}
           ]
@@ -828,7 +828,7 @@ if (subscriptionURL) {
   $done({content: ResourceParse()})
 // retry with new UA, default use shadowrocket
 } else if (UARetry && !inRetry && version>920) {
-  $notify(Phy2 ? "⚠️ 将更换 UA 重新获取订阅，以拿到 Hysteria2 节点" : "⚠️ 将尝试使用其他 UA, 重新获取订阅内容","⚠️ 如仍旧无有效内容，请自行与节点提供商联系","⚠️ 本次尝试使用 User-Agent 为 ⬇️\n\n"+UA_Retry)
+  $notify(Phy2 ? "⚠️ 将更换 UA 重新获取订阅，以获取 Hysteria2 节点" : "⚠️ 将尝试使用其他 UA, 重新获取订阅内容","⚠️ 如仍旧无有效内容，请自行与节点提供商联系","⚠️ 本次尝试使用 User-Agent 为 ⬇️\n\n"+UA_Retry)
   $done({retry: {user_agent: "Shadowrocket/3218 CFNetwork/3860.600.12 Darwin/25.5.0 iPhone18,1"}})
 } else {
   if (typeof($resource)!=="undefined" && PProfile == 0) {
