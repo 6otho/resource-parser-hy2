@@ -1205,6 +1205,15 @@ function SubscriptionURL(content) {
     return wrapped || subscriptionPath || resourceFile || tokenPath || subscriptionQuery ? url : ""
 }
 
+// ⟦hy2 原生⟧ 整段 Base64 解码后若含 hysteria2:// / hy2:// URI，判为需先解码的订阅。
+// Base64 特征串受字节偏移和换行影响，硬编码特征不可靠，故直接解码后检测协议头。
+function IsBase64HY2(subs) {
+  var encoded = String(subs == null ? "" : subs).replace(/\s/g, "")
+  if (!/^[A-Za-z0-9+/_-]+={0,2}$/.test(encoded)) { return false }
+  if (encoded.replace(/=+$/, "").length % 4 == 1) { return false }
+  try { return /(?:^|[\r\n])[^\S\r\n]*(?:hysteria2|hy2):\/\//i.test(Base64.decode(encoded)) } catch (e) { return false }
+}
+
 function Type_Check(subs) {
     // 判型使用正文副本；content0 保留原始说明供逐条转换。
     if (typeQ != "server" && typeQ != "uri" && subs.indexOf("{#") != -1) { subs = subs.split("\n").map(RuleNoteBody).join("\n") }
@@ -1285,6 +1294,9 @@ function Type_Check(subs) {
       typec= "server-sip008"
       type = (typeQ == "unsupported" || typeQ =="server")? "Subs":"wrong-field"
       content0 = SIP2QuanX(content0)
+    } else if ((typeQ == "server" || typeQ == "unsupported") && IsBase64HY2(subs)) { // ⟦hy2 原生⟧ 整段 Base64 解开后是 hy2 URI 列表
+      typec = "server-b64"
+      type = "Subs-B64Encode"
     } else if (SubK.some(NodeCheck1)) {  //b64加密的订阅类型
       typec="server-b64"
       type = (typeQ == "unsupported" || typeQ =="server")? "Subs-B64Encode":"wrong-field"
