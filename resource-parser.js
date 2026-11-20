@@ -26,7 +26,6 @@
 ⦿ emoji=1(国行设备用2)/-1, 添加/删除节点名内地区旗帜;
 ⦿ udp=1/-1, tfo=1/-1, 分别强制开启(关闭) 𝐮𝐝𝐩-𝐫𝐞𝐥𝐚𝐲/𝐟𝐚𝐬𝐭-𝐨𝐩𝐞𝐧;
 ⦿ uot=1, 开启 udp-over-tcp=true选项（仅限SS(R)）
-⦿ hy2=0, 默认保留 hysteria2/hy2 节点(QX 965+ 转成原生 hysteria2= 行，旧版保留原始 URI); 设为 0 恢复原版忽略行为
 ⦿ cert=1/-1/domain, 分别开启/关闭 𝐭𝐥𝐬 证书验证；938+ 支持 domain 作为 tls-verification 校验证书域名(默认关闭);
   ❖ csha/psha, tls-cert-sha256 以及 tls-pubkey-sha256 参数
   ❖ alpn, 指定over-tls类型节点的alpn参数
@@ -108,9 +107,9 @@ QX 1.9.0 (965) 起已支持 Hysteria2。原版脚本仍把 hysteria2:// / hy2://
 1. QX build >= 965：直接转成原生 QX 节点行，例如
    hysteria2=example.com:443, password=pwd, udp-relay=true, tag=hy2-01
    支持端口跳跃(port-hopping)与 Salamander 混淆(salamander-password)，支持 sni -> tls-host、insecure -> tls-verification=false。
-2. QX build < 965：回退为保留原始 hysteria2:// 链接（供其它客户端或留档）。
+2. QX build < 965：按原版"不支持类型"忽略（旧版 QX 无法使用 hy2 节点）。
 3. Clash 订阅里的 type: hysteria2 节点同样走上面的原生转换。
-4. 需要恢复原版忽略行为：订阅链接后加 &hy2=0（或 hy2=-1 / false）。
+4. 整段 Base64（解开后是 hy2 URI 列表）会先解码再转换。
 5. tuic / wireguard / 旧版 anytls 仍按原版忽略，未做改动。
 */
 
@@ -209,9 +208,6 @@ $parser.hashSchema = function () {
             description: "默认关闭", onValue: "1", offValue: "-1" },
           { type: "switch", key: "uot",   label: "UDP over TCP（仅 SS/SSR）",
             onValue: "1", offValue: "" },
-          { type: "switch", key: "hy2",   label: "保留 Hysteria2 节点（hy2）",
-            description: "QX 965+ 会把 hysteria2/hy2 节点转成原生 hysteria2= 行（含端口跳跃、Salamander 混淆）；旧版保留原始 hysteria2:// 链接。关闭则按原版逻辑忽略并提示",
-            onValue: "1", offValue: "0" },
           { type: "switch", key: "aead",  label: "VMess AEAD",
             description: "关闭 VMess AEAD", onValue: "", offValue: "-1" },
           { type: "text",   key: "alpn",  label: "ALPN",
@@ -666,8 +662,6 @@ var Palpn = mark0 && para1.indexOf("alpn=") != -1 && version >= 712? para1.split
 var Pobfs = mark0 && para1.indexOf("obfs=") != -1 && version >= 770? para1.split("obfs=")[1].split("&")[0] : ""; // 指定特殊情况下的 obfs=xx-http 类型
 var Psession =  mark0 && para1.indexOf("tsession=") != -1 && version >= 771? para1.split("tsession=")[1].split("&")[0] : "";//tls-no-session-ticket and tls-no-session-reuse
 // 0/1 代表关闭 session-ticket/reuse，2 表示全部关闭。
-// ⟦hy2 保留开关⟧ 是否保留 QuanX 不支持的 hysteria2 / hy2 节点（默认保留；hy2=0 恢复原版忽略行为）
-var Phy2 = mark0 && para1.indexOf("hy2=") != -1 ? para1.split("hy2=")[1].split("&")[0] : 1;
 var Pmix = version>=844? 1 : 0 // allow rewrite and filter mix from version 844
 var Pjsonjq = version>=845? 0 : 1 // allow jsonjq from version 845
 
@@ -695,16 +689,8 @@ function TLSCertParam(Pcert0, fallback) {
 
 var PNS=0 // 不支持的节点统计
 var NSList=["当前订阅内，不支持以下节点 ↘️ \n"] // 不支持节点列表
-// ⟦hy2 保留⟧ 被保留的 hysteria2 / hy2 节点（原始 URI），在输出前统一追加
-var PkeepList = []
-// 是否保留 hy2：hy2=0 / -1 / false 时关闭
-function HY2Keep() {
-  var v = String(Phy2 === undefined || Phy2 === null ? 1 : Phy2).toLowerCase()
-  return !(v == "0" || v == "-1" || v == "false" || v == "off")
-}
-// QX 1.9.0 (965)+ 支持原生 hysteria2 节点行；老版本继续走原始 URI 保留分支
+// QX 1.9.0 (965)+ 支持原生 hysteria2 节点行；低版本仍将其列入"不支持"提示
 var UNSUP_HY2 = version >= 965 ? "" : "Hysteria2/"
-function HY2Native() { return HY2Keep() && version >= 965 }
 
 var RegoutList= [] ;//用于 regout参数删选提醒
 // URL-Scheme 增加配置
@@ -1037,7 +1023,7 @@ function ResourceParse() {
     }
     //2023-07-10 调整emoji操作顺序
     if (Pemoji) { total = emoji_handle(total, Pemoji); }
-    if (total.length > 0 || (HY2Keep() && PkeepList.length > 0)){
+    if (total.length > 0){
       if (Psuffix==1 || Psuffix==-1) {total = Psuffix == 1? total.map(type_suffix):total.map(type_prefix)
       }
       total = total.map(type_handle).map(emoji_prefix_handle).map(tag_handle) //各类节点名操作
@@ -1048,19 +1034,6 @@ function ResourceParse() {
       //$notify("before","haha",total)
       total = TagCheck_QX(total).join("\n") //节点名检查
       if (PUOT==1) { total = total.split("\n").map(UOT).join("\n")}
-      // ⟦hy2 保留⟧ 放在节点名检查之后再追加，避免被 TagCheck_QX 当作无 tag 的非法行丢弃
-      if (HY2Keep() && PkeepList.length > 0) {
-        var keptHY2 = PkeepList.filter(function (line) { return line && String(line).trim() })
-        if (Pin0 || Pout0) { // 让 in/out 关键字对 hy2 节点同样生效
-          keptHY2 = keptHY2.filter(function (line) {
-            var nm = String(line).split("#").pop()
-            var fake = "tag=" + nm
-            return Scheck(fake, Pin0) != 0 && Scheck(fake, Pout0) != 1
-          })
-        }
-        total = [total].filter(function (x) { return x && String(x).trim() }).concat(keptHY2).join("\n")
-        PkeepList = []
-      }
       if (Pcnt == 1 && total!=undefined) {$notify("⟦" + subtag + "⟧"+"解析后最终返回内容" , "节点数量: " +total.split("\n").length, total)}
       total = PRelay==""? Base64.encode(total) : ServerRelay(total.split("\n"),PRelay) //强制节点类型 base64 加密后再导入 Quantumult X, 如果是relay，则转换成分流类型
       if (PNS !=0) {
@@ -2695,55 +2668,6 @@ function Reality_Handle(cnt) {
 }
 
 
-// ⟦hy2 保留⟧ 规范化 hysteria2 / hy2 URI：把 QuanX 风格的 tag= 参数转成 #名称，缺名时补一个
-function HY2_URI(cnt) {
-  var line = String(cnt == null ? "" : cnt).trim()
-  if (!line || !/^[a-z0-9]+:\/\//i.test(line)) { return line }
-  var hash = line.indexOf("#")
-  var base = hash != -1 ? line.slice(0, hash) : line
-  var frag = hash != -1 ? line.slice(hash + 1) : ""
-  var name = ""
-  var tagm = base.match(/[?&]tag=([^&#]*)/)
-  if (tagm) {
-    base = base.replace(/[?&]tag=[^&#]*/, "")
-    try { name = decodeURIComponent(tagm[1]) } catch (e) { name = tagm[1] }
-  }
-  if (!name && frag) {
-    try { name = decodeURIComponent(frag) } catch (e) { name = frag }
-  }
-  if (!name) {
-    var hp = base.replace(/^[a-z0-9]+:\/\//i, "").split("@").pop().split(/[\/?#]/)[0]
-    name = "HY2 " + hp
-  }
-  base = base.replace(/[?&](#|$)/, "").replace(/[?&]$/, "")
-  return base + "#" + name
-}
-
-// ⟦hy2 保留⟧ 把 Clash 中的 hysteria2 节点反写成标准 hysteria2 URI
-function ClashHY2URI(cnt) {
-  if (!cnt || !cnt.server) { return "" }
-  var port = cnt.port != null ? cnt.port : (cnt["server-port"] != null ? cnt["server-port"] : "")
-  var auth = cnt.password != null ? cnt.password : (cnt.auth != null ? cnt.auth : "")
-  var uri = "hysteria2://" + (String(auth) !== "" ? encodeURIComponent(String(auth)) + "@" : "") + cnt.server + (String(port) !== "" ? ":" + port : "") + "/"
-  var q = []
-  var add = function (k, v) {
-    if (v === undefined || v === null || v === "" || v === false || v === "false") { return }
-    q.push(k + "=" + encodeURIComponent(String(v)))
-  }
-  var sni = cnt.sni != null ? cnt.sni : cnt.servername
-  add("sni", sni)
-  if (cnt["skip-cert-verify"] === true || cnt["skip-cert-verify"] === "true" || cnt.insecure === true) { q.push("insecure=1") }
-  add("obfs", cnt.obfs)
-  add("obfs-password", cnt["obfs-password"])
-  add("pinSHA256", cnt.fingerprint)
-  if (Array.isArray(cnt.alpn) && cnt.alpn.length > 0) { add("alpn", cnt.alpn.join(",")) }
-  if (cnt.ports && String(cnt.ports) !== "") { add("mport", cnt.ports) }
-  add("up", cnt.up)
-  add("down", cnt.down)
-  if (q.length > 0) { uri += "?" + q.join("&") }
-  return uri + "#" + (cnt.name != null ? ClashNameFix(cnt.name) : "HY2")
-}
-
 // ⟦hy2 原生⟧ 把 hysteria2/hy2 URI 转成 QX 1.9.0 (965)+ 的原生节点行
 function HY2_2QX(cnt, Pudp, Pcert0) {
   var line = String(cnt == null ? "" : cnt).trim()
@@ -2892,12 +2816,10 @@ function Subs2QX(subs, Pudp, Ptfo, Pcert0, PTls13) {
                 } else if (SurgeK.some(NodeCheck) ) { // Surge type, 第2为端口号
                     node = QX_TLS(Surge2QX(list0[i])[0], Pcert0, PTls13)
                 } else if (type=="hysteria2" || type=="hy2") {
-                  // ⟦hy2 原生⟧ QX 965+ 直接生成原生 hysteria2= 节点行；旧版回退为原始 URI 保留；hy2=0 则忽略
-                  if (HY2Native()) {
+                  // QX 965+ 原生转换；低版本按不支持类型忽略
+                  if (version >= 965) {
                     node = HY2_2QX(list0[i], Pudp, Pcert0)
                     node = tag0 != "" ? URI_TAG(node, tag0) : node
-                  } else if (HY2Keep()) {
-                    PkeepList.push(HY2_URI(list0[i]))
                   } else {
                     PNS=PNS+1
                     NSList.push(numToEmoji10(PNS)+list0[i])
@@ -4983,20 +4905,14 @@ function Clash2QX(cnt) {
       } else if (typecc=="anytls" && version >913) { //anytls
         node = CTLS2QX(node)
       } else if (typecc == "hysteria2" || typecc == "hy2") {
-        // ⟦hy2 原生⟧ QX 965+ 转成原生 hysteria2= 行；旧版回退为原始 URI 保留；hy2=0 则忽略
-        if (HY2Native()) {
+        // QX 965+ 原生转换；低版本按不支持类型忽略
+        if (version >= 965) {
           node = ClashHY2_2QX(node, Pudp0, Pcert0)
           if (!node) {
             PNS = PNS+1
             NSList.push(numToEmoji10(PNS)+JSON.stringify(bb[i]))
             typecc = "NS"
           }
-        } else if (HY2Keep()) {
-          var hy2uri = ClashHY2URI(node)
-          if (hy2uri) { PkeepList.push(hy2uri) }
-          else { PNS = PNS+1; NSList.push(numToEmoji10(PNS)+JSON.stringify(node)) }
-          node = ""
-          typecc = "KEEP"
         } else {
           PNS = PNS+1
           NSList.push(numToEmoji10(PNS)+JSON.stringify(node))
@@ -5012,7 +4928,7 @@ function Clash2QX(cnt) {
       }
       node = Pudp0 != 0 ? XUDP(node,Pudp0) : node
       node = Ptfo0 != 0 ? XTFO(node,Ptfo0) : node
-      if (typecc!="NS" && typecc!="KEEP") {
+      if (typecc!="NS") {
       node=node.replace(/^([^,]*)\s+/g, (match, p1) => { // 某些ipv6节点空格问题
         return p1.replace(/\s+/g, '');
       });
