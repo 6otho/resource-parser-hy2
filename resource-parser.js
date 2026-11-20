@@ -41,7 +41,7 @@
   ❖ replace=regex1@𝘀𝘁𝗿1+regex2@𝘀𝘁𝗿2
 ⦿ ptn/npt=1-8, 将节点名英文/数字替换成样式 ⇒ 🅰/🄰/𝐀/𝗮/𝔸/𝕒/ᵃ/ᴬ, ①\❶\⓵\𝟙\¹\₁\𝟏\𝟷
 ⦿ delreg, 利用正则表达式来删除 "节点名" 中的字段(⚠️ 慎用)
-⦿ UA=1，将尝试使用 shadowrocket 的UA重新获取节点信息
+⦿ UA=1 / hy2=1，将尝试使用 shadowrocket 的UA重新获取节点信息(可拿到被订阅源隐藏的 Hysteria2 节点); 两者等价
 ⦿ aead=-1, 关闭 Vmess 的 AEAD 参数
 ⦿ host=xxx, 修改已有 host , 如要增加host，请用☠️结尾
 ⦿ obfs=vhttp/shttp, 指定 obfs=shadowsocks-http 或 obfs=vmess-http 的特殊需求
@@ -171,7 +171,10 @@ $parser.hashSchema = function () {
         items: [
           { type: "switch", key: "UA", label: "User-Agent 替换",
             onValue: "1", offValue: "" ,
-            description: "开启该选项后，将会尝试使用 Shadowrocket 的 User-Agent 重新获取订阅内容"}
+            description: "开启该选项后，将会尝试使用 Shadowrocket 的 User-Agent 重新获取订阅内容（含被订阅源隐藏的 Hysteria2 节点）"},
+          { type: "switch", key: "hy2", label: "拿到 Hysteria2 节点（等价开 UA）",
+            onValue: "1", offValue: "" ,
+            description: "开启后自动用 Shadowrocket 的 User-Agent 重新获取订阅，以便拿到被订阅源对 QX 隐藏的 Hysteria2/hy2 节点。效果等同于打开「User-Agent 替换」"}
           ]
       },
       {
@@ -576,7 +579,8 @@ var para = /^https?:\/\//.test(link0) || (version >= 951 && link0.indexOf("#") !
   (/^#[ \t]*[a-z][\w-]*=/i.test(firstResourceLine) ? firstResourceLine : "");
 var para1 = para.slice(para.indexOf("#") + 1).replace(/\$type/g,"node_type_para_prefix").replace(/\$emoji/g,"node_emoji_flag_prefix").replace(/\$tag/g,"node_tag_prefix").replace(/\$index/g,"node_index_prefix") //防止参数中其它位置也存在"#"
 var mark0 = para.indexOf("#") != -1 ? true : false; //是否有參數需要解析
-var UARetry = mark0 && /(?:^|&)UA=1(?:&|$)/.test(para1) ? 1 : 0;
+var UARetry = mark0 && /(?:^|&)(?:UA|hy2)=1(?:&|$)/.test(para1) ? 1 : 0; // hy2=1 等价于 UA=1：换 UA 重新拉订阅，拿到被订阅源隐藏的 Hysteria2 节点
+var Phy2 = mark0 && /(?:^|&)hy2=1(?:&|$)/.test(para1) ? 1 : 0;
 var Pinfo = mark0 && para1.indexOf("info=") != -1 ? para1.split("info=")[1].split("&")[0] : 0;
 var ntf_flow = 0;
 //常用量
@@ -824,7 +828,7 @@ if (subscriptionURL) {
   $done({content: ResourceParse()})
 // retry with new UA, default use shadowrocket
 } else if (UARetry && !inRetry && version>920) {
-  $notify("⚠️ 将尝试使用其他 UA, 重新获取订阅内容","⚠️ 如仍旧无有效内容，请自行与节点提供商联系","⚠️ 本次尝试使用 User-Agent 为 ⬇️\n\n"+UA_Retry)
+  $notify(Phy2 ? "⚠️ 将更换 UA 重新获取订阅，以拿到 Hysteria2 节点" : "⚠️ 将尝试使用其他 UA, 重新获取订阅内容","⚠️ 如仍旧无有效内容，请自行与节点提供商联系","⚠️ 本次尝试使用 User-Agent 为 ⬇️\n\n"+UA_Retry)
   $done({retry: {user_agent: "Shadowrocket/3218 CFNetwork/3860.600.12 Darwin/25.5.0 iPhone18,1"}})
 } else {
   if (typeof($resource)!=="undefined" && PProfile == 0) {
